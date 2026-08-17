@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import Annotated, APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,7 @@ logger = logging.getLogger("cortex.agents.router")
 
 try:
     import logfire
+
     LOGFIRE_AVAILABLE = True
 except ImportError:
     LOGFIRE_AVAILABLE = False
@@ -81,22 +82,34 @@ async def _visible_tokens(tokens):
 def _get_limiter():
     """Import limiter at runtime to avoid circular imports."""
     from app.main import limiter
+
     return limiter
 
 
 @router.post("/chat")
-async def chat(request: Request, body: ChatRequest, user: dict = Depends(get_current_user)):
+async def chat(
+    request: Request,
+    body: ChatRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
     limiter = _get_limiter()
     limiter.limit("30/minute")(chat)
     try:
         check_token_budget(body.prompt)
     except TokenBudgetExceeded as e:
         return StreamingResponse(
-            iter([f"data: {json.dumps({'token': f'Prompt too long: {e}'})}\n\n", "data: [DONE]\n\n"]),
+            iter(
+                [
+                    f"data: {json.dumps({'token': f'Prompt too long: {e}'})}\n\n",
+                    "data: [DONE]\n\n",
+                ]
+            ),
             media_type="text/event-stream",
         )
 
-    await chat_service.save_message(user["id"], body.conversation_id, "user", body.prompt)
+    await chat_service.save_message(
+        user["id"], body.conversation_id, "user", body.prompt
+    )
     await memory.add_message(body.conversation_id, "user", body.prompt)
 
     guardrails.validate_input_prompt(body.prompt)
@@ -127,7 +140,11 @@ async def chat(request: Request, body: ChatRequest, user: dict = Depends(get_cur
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(get_current_user)):
+async def chat_stream(
+    request: Request,
+    body: ChatRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
     try:
         check_token_budget(body.prompt)
     except TokenBudgetExceeded as exc:
@@ -136,9 +153,12 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
         async def token_error():
             yield f"data: {json.dumps({'token': error_msg})}\n\n"
             yield "data: [DONE]\n\n"
+
         return StreamingResponse(token_error(), media_type="text/event-stream")
 
-    await chat_service.save_message(user["id"], body.conversation_id, "user", body.prompt)
+    await chat_service.save_message(
+        user["id"], body.conversation_id, "user", body.prompt
+    )
     await memory.add_message(body.conversation_id, "user", body.prompt)
 
     state = _initial_state(body)
@@ -151,7 +171,9 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
 
         logger.info(
             "[%s] Stream started | conversation=%s | prompt=%.80s",
-            req_id, body.conversation_id, redact_pii(body.prompt),
+            req_id,
+            body.conversation_id,
+            redact_pii(body.prompt),
         )
 
         try:
@@ -191,8 +213,11 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
 
             # 3. Agent Execution Node with Logfire Tracing
             if LOGFIRE_AVAILABLE:
-                logfire.info("Router Agent Orchestrated Request -> [{agent}]", agent=resolved_agent, conversation_id=body.conversation_id)
-
+                logfire.info(
+                    "Router Agent Orchestrated Request -> [{agent}]",
+                    agent=resolved_agent,
+                    conversation_id=body.conversation_id,
+                )
 
             if resolved_agent == "search":
                 if LOGFIRE_AVAILABLE:
@@ -216,7 +241,9 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
                     async for token in _visible_tokens(coding_node_stream(state)):
                         full_response += token
                         yield f"data: {json.dumps({'token': token})}\n\n"
-            elif resolved_agent in ("rag", "research_rag") and not state.get("ai_response"):
+            elif resolved_agent in ("rag", "research_rag") and not state.get(
+                "ai_response"
+            ):
                 if LOGFIRE_AVAILABLE:
                     with logfire.span("answer_synthesis_stream", agent=resolved_agent):
                         async for token in _visible_tokens(chat_node_stream(state)):
@@ -227,7 +254,6 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
                         full_response += token
                         yield f"data: {json.dumps({'token': token})}\n\n"
             elif resolved_agent in ("chat", "search") and not state.get("ai_response"):
-
                 if LOGFIRE_AVAILABLE:
                     with logfire.span("chat_agent_stream", agent=resolved_agent):
                         async for token in _visible_tokens(chat_node_stream(state)):
@@ -279,7 +305,9 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
         finally:
             logger.info(
                 "[%s] Stream finished | agent=%s | response_length=%d",
-                req_id, resolved_agent, len(full_response),
+                req_id,
+                resolved_agent,
+                len(full_response),
             )
             if LOGFIRE_AVAILABLE:
                 logfire.info(
@@ -298,6 +326,8 @@ async def chat_stream(request: Request, body: ChatRequest, user: dict = Depends(
                     token_usage=state.get("token_usage", {}),
                     agent=resolved_agent,
                 )
-                await memory.add_message(body.conversation_id, "assistant", full_response)
+                await memory.add_message(
+                    body.conversation_id, "assistant", full_response
+                )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

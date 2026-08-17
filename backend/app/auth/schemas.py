@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel
 
 
@@ -10,6 +8,6 @@ class LoginRequest(BaseModel):
 class UserOut(BaseModel):
     id: str
     firebase_uid: str
-    name: Optional[str] = None
-    email: Optional[str] = None
-    avatar: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
+    avatar: str | None = None

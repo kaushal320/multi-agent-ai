@@ -21,12 +21,17 @@ async def rag_node(state: AgentState) -> dict:
         result = await get_model("chat").ainvoke(
             [
                 ("system", RAG_SYSTEM_PROMPT),
-                ("human", f"Document context:\n{research['rag_context']}\n\nQuestion: {state['prompt']}"),
+                (
+                    "human",
+                    f"Document context:\n{research['rag_context']}\n\nQuestion: {state['prompt']}",
+                ),
             ]
         )
         response = content_text(result.content)
         usage = _extract_usage(result)
-        log_agent_success("rag", state, t0, result_type="synthesized", response_length=len(response))
+        log_agent_success(
+            "rag", state, t0, result_type="synthesized", response_length=len(response)
+        )
         return {"ai_response": response, "images": [], "token_usage": usage}
     except Exception as exc:
         log_agent_failure("rag", state, exc)
@@ -55,7 +60,9 @@ async def rag_research_node(state: AgentState) -> dict:
         context = "\n\n".join(str(source.get("page_content", "")) for source in sources)
 
         log_agent_success(
-            "rag_research", state, t0,
+            "rag_research",
+            state,
+            t0,
             collection=collection,
             chunks_retrieved=len(hits),
         )
@@ -99,7 +106,9 @@ async def rag_node_stream(state: AgentState):
                 yield content
 
         log_agent_success(
-            "rag_stream", state, t0,
+            "rag_stream",
+            state,
+            t0,
             collection=collection,
             chunks_retrieved=len(hits),
             tokens_yielded=token_count,

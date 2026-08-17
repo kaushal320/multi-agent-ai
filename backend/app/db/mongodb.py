@@ -1,5 +1,3 @@
-from typing import Optional
-
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -8,7 +6,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
 
-mongo_client: Optional[AsyncIOMotorClient] = None
+mongo_client: AsyncIOMotorClient | None = None
 
 
 async def init_db() -> None:

@@ -1,4 +1,5 @@
 import pytest
+
 from app.core.guardrails import (
     FAST_PATH_GREETINGS,
     GuardrailViolationError,

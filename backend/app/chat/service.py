@@ -83,15 +83,13 @@ async def get_messages(
 async def get_user_token_usage(user_id: str, days: int = 30) -> dict:
     """Aggregate token usage for a user over the last N days."""
     from datetime import timedelta
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    messages = (
-        await Message.find(
-            Message.role == "assistant",
-            Message.created_at >= cutoff,
-        )
-        .to_list()
-    )
+    messages = await Message.find(
+        Message.role == "assistant",
+        Message.created_at >= cutoff,
+    ).to_list()
 
     total_input = 0
     total_output = 0
@@ -109,7 +107,12 @@ async def get_user_token_usage(user_id: str, days: int = 30) -> dict:
 
         agent = msg.agent or "unknown"
         if agent not in by_agent:
-            by_agent[agent] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "requests": 0}
+            by_agent[agent] = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "requests": 0,
+            }
         by_agent[agent]["input_tokens"] += inp
         by_agent[agent]["output_tokens"] += out
         by_agent[agent]["total_tokens"] += tot

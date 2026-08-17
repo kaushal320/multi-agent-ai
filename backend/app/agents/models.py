@@ -37,9 +37,9 @@ class ThinkingBlockFilter:
             if self._inside_thinking:
                 end = self._buffer.find(self._close_tag)
                 if end == -1:
-                    self._buffer = self._buffer[-(len(self._close_tag) - 1):]
+                    self._buffer = self._buffer[-(len(self._close_tag) - 1) :]
                     break
-                self._buffer = self._buffer[end + len(self._close_tag):]
+                self._buffer = self._buffer[end + len(self._close_tag) :]
                 self._inside_thinking = False
                 continue
 
@@ -52,7 +52,7 @@ class ThinkingBlockFilter:
                 break
 
             output.append(self._buffer[:start])
-            self._buffer = self._buffer[start + len(self._open_tag):]
+            self._buffer = self._buffer[start + len(self._open_tag) :]
             self._inside_thinking = True
 
         return "".join(output)
@@ -101,7 +101,9 @@ def _messages_to_cache_key(messages) -> list:
     key = []
     for msg in messages:
         if hasattr(msg, "content"):
-            key.append({"role": getattr(msg, "type", "unknown"), "content": msg.content})
+            key.append(
+                {"role": getattr(msg, "type", "unknown"), "content": msg.content}
+            )
         elif isinstance(msg, dict):
             key.append(msg)
         else:
@@ -179,10 +181,13 @@ def get_model(agent_name: str):
                     last_err = e
                     logger.warning(
                         "[%s] LLM call failed (attempt %d/%d): %s",
-                        self._name, attempt, LLM_MAX_RETRIES, type(e).__name__,
+                        self._name,
+                        attempt,
+                        LLM_MAX_RETRIES,
+                        type(e).__name__,
                     )
                     if attempt < LLM_MAX_RETRIES:
-                        await asyncio.sleep(min(2 ** attempt, 8))
+                        await asyncio.sleep(min(2**attempt, 8))
             raise LLMRetryError(self._name, LLM_MAX_RETRIES, str(last_err))
 
         async def astream(self, messages, **kwargs):
@@ -196,10 +201,13 @@ def get_model(agent_name: str):
                     last_err = e
                     logger.warning(
                         "[%s] LLM stream failed (attempt %d/%d): %s",
-                        self._name, attempt, LLM_MAX_RETRIES, type(e).__name__,
+                        self._name,
+                        attempt,
+                        LLM_MAX_RETRIES,
+                        type(e).__name__,
                     )
                     if attempt < LLM_MAX_RETRIES:
-                        await asyncio.sleep(min(2 ** attempt, 8))
+                        await asyncio.sleep(min(2**attempt, 8))
             raise LLMRetryError(self._name, LLM_MAX_RETRIES, str(last_err))
 
         def bind_tools(self, tools, **kwargs):

@@ -3,7 +3,10 @@ import sys
 import time
 from contextlib import asynccontextmanager
 
+import redis
 from fastapi import FastAPI, Request
+
+logger = logging.getLogger("cortex.main")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +23,6 @@ from app.db.mongodb import init_db
 from app.documents.router import router as documents_router
 from app.routers.me import router as me_router
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -33,6 +35,7 @@ logging.getLogger("cortex.agents").setLevel(logging.INFO)
 
 try:
     import logfire
+
     logfire.configure(
         service_name="cortex-ai-backend",
         token=settings.logfire_token if settings.logfire_token else None,
@@ -40,7 +43,7 @@ try:
         send_to_logfire="if-token-present",
     )
     LOGFIRE_AVAILABLE = True
-except Exception:
+except ImportError:
     LOGFIRE_AVAILABLE = False
 
 
@@ -67,8 +70,8 @@ if LOGFIRE_AVAILABLE:
         logfire.instrument_fastapi(app)
         logfire.instrument_httpx()
         logfire.instrument_pydantic()
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Logfire instrumentation error: %s", e)
 
 
 @app.middleware("http")
@@ -79,7 +82,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if settings.environment != "development":
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
     return response
 
 
@@ -115,25 +120,28 @@ async def health_check():
     checks = {"status": "ok", "timestamp": time.time()}
     try:
         from app.core.redis_client import redis_client
+
         await redis_client.ping()
         checks["redis"] = "ok"
-    except Exception as e:
+    except redis.RedisError as e:
         checks["redis"] = f"error: {type(e).__name__}"
         checks["status"] = "degraded"
 
     try:
         from app.core.vectorstore import qdrant_client
+
         qdrant_client.get_collections()
         checks["qdrant"] = "ok"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         checks["qdrant"] = f"error: {type(e).__name__}"
         checks["status"] = "degraded"
 
     try:
         from app.db.mongodb import mongo_client
+
         await mongo_client.admin.command("ping")
         checks["mongodb"] = "ok"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         checks["mongodb"] = f"error: {type(e).__name__}"
         checks["status"] = "degraded"
 

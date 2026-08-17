@@ -1,7 +1,8 @@
 import hashlib
 import json
 import logging
-from typing import Optional
+
+import redis
 
 from app.core.redis_client import redis_client
 
@@ -13,12 +14,14 @@ CACHE_KEY_PREFIX = "llm_cache:"
 
 def _cache_key(model_name: str, messages: list) -> str:
     """Generate a deterministic cache key from model name + messages."""
-    payload = json.dumps({"model": model_name, "messages": messages}, sort_keys=True, default=str)
+    payload = json.dumps(
+        {"model": model_name, "messages": messages}, sort_keys=True, default=str
+    )
     digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
     return f"{CACHE_KEY_PREFIX}{digest}"
 
 
-async def get_cached_response(model_name: str, messages: list) -> Optional[dict]:
+async def get_cached_response(model_name: str, messages: list) -> dict | None:
     """Look up a cached LLM response. Returns None on miss."""
     try:
         key = _cache_key(model_name, messages)
@@ -27,18 +30,20 @@ async def get_cached_response(model_name: str, messages: list) -> Optional[dict]
             logger.debug("Cache HIT for model=%s", model_name)
             return json.loads(raw)
         logger.debug("Cache MISS for model=%s", model_name)
-    except Exception:
-        logger.debug("Cache read error (treating as miss)")
+    except redis.RedisError as e:
+        logger.debug("Cache read error (treating as miss): %s", e)
     return None
 
 
-async def set_cached_response(model_name: str, messages: list, response: str, ttl: int = CACHE_TTL_SECONDS) -> None:
+async def set_cached_response(
+    model_name: str, messages: list, response: str, ttl: int = CACHE_TTL_SECONDS
+) -> None:
     """Store an LLM response in cache."""
     try:
         key = _cache_key(model_name, messages)
         await redis_client.set(key, json.dumps({"response": response}), ex=ttl)
-    except Exception:
-        logger.debug("Cache write error (non-fatal)")
+    except redis.RedisError as e:
+        logger.debug("Cache write error (non-fatal): %s", e)
 
 
 async def invalidate_cache(prefix: str = CACHE_KEY_PREFIX) -> int:
@@ -49,6 +54,6 @@ async def invalidate_cache(prefix: str = CACHE_KEY_PREFIX) -> int:
             keys.append(key)
         if keys:
             return await redis_client.delete(*keys)
-    except Exception:
-        pass
+    except redis.RedisError as e:
+        logger.debug("Cache invalidation error: %s", e)
     return 0

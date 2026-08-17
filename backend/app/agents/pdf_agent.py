@@ -46,7 +46,11 @@ async def pdf_node(state: AgentState) -> dict:
         url = storage.save_file(filename, pdf_bytes)
 
         log_agent_success("pdf", state, t0, pdf_url=url, paragraphs=len(paragraphs))
-        return {"ai_response": f"Your PDF is ready: [Download PDF]({url})", "images": [], "token_usage": usage}
+        return {
+            "ai_response": f"Your PDF is ready: [Download PDF]({url})",
+            "images": [],
+            "token_usage": usage,
+        }
     except Exception as exc:
         log_agent_failure("pdf", state, exc)
         raise

@@ -2,7 +2,7 @@ import os
 import tempfile
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import Annotated, APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client.models import PointStruct
@@ -22,9 +22,9 @@ MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 @router.post("/upload")
 async def upload_document(
-    file: UploadFile = File(...),
-    conversation_id: str = Form(...),
-    user: dict = Depends(get_current_user),
+    file: Annotated[UploadFile, File()],
+    conversation_id: Annotated[str, Form()],
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -48,7 +48,9 @@ async def upload_document(
         os.unlink(tmp_path)
 
     if not chunks:
-        raise HTTPException(status_code=400, detail="No extractable text found in the PDF")
+        raise HTTPException(
+            status_code=400, detail="No extractable text found in the PDF"
+        )
 
     collection = get_collection_name(conversation_id)
     ensure_collection(collection)

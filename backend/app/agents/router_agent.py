@@ -7,7 +7,16 @@ from app.core.pii import redact_pii
 
 logger = logging.getLogger("cortex.agents.router_agent")
 
-ROUTER_AGENTS = ["chat", "search", "coding", "pdf", "ppt", "image", "rag", "research_rag"]
+ROUTER_AGENTS = [
+    "chat",
+    "search",
+    "coding",
+    "pdf",
+    "ppt",
+    "image",
+    "rag",
+    "research_rag",
+]
 
 ROUTER_SYSTEM_PROMPT = """You are a router for an AI assistant. Based on the user's message, choose exactly ONE of the following agents and reply with a single word only:
 
@@ -25,6 +34,7 @@ Return only the agent name. Do not add any other text."""
 
 try:
     import logfire
+
     LOGFIRE_AVAILABLE = True
 except ImportError:
     LOGFIRE_AVAILABLE = False
@@ -63,16 +73,31 @@ async def router_node(state: AgentState) -> dict:
         if not agent or agent not in ROUTER_AGENTS:
             agent = "chat"
 
-    logger.info("Router classified to: %s | prompt=%.80s", agent, redact_pii(state["prompt"]))
+    logger.info(
+        "Router classified to: %s | prompt=%.80s", agent, redact_pii(state["prompt"])
+    )
 
     plans = {
         "chat": ["supervisor", "chat specialist"],
-        "search": ["supervisor", "web research specialist", "answer synthesis specialist"],
+        "search": [
+            "supervisor",
+            "web research specialist",
+            "answer synthesis specialist",
+        ],
         "coding": ["supervisor", "coding specialist"],
         "pdf": ["supervisor", "document generation specialist"],
         "ppt": ["supervisor", "presentation specialist"],
         "image": ["supervisor", "image generation specialist"],
-        "rag": ["supervisor", "document retrieval specialist", "answer synthesis specialist"],
-        "research_rag": ["supervisor", "document retrieval specialist", "web research specialist", "answer synthesis specialist"],
+        "rag": [
+            "supervisor",
+            "document retrieval specialist",
+            "answer synthesis specialist",
+        ],
+        "research_rag": [
+            "supervisor",
+            "document retrieval specialist",
+            "web research specialist",
+            "answer synthesis specialist",
+        ],
     }
     return {"agent": agent, "orchestration_plan": plans[agent]}

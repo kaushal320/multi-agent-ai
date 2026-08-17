@@ -35,7 +35,13 @@ async def search_node(state: AgentState) -> dict:
 
         if not response.tool_calls:
             response_text = content_text(response.content)
-            log_agent_success("search", state, t0, result_type="direct_answer", response_length=len(response_text))
+            log_agent_success(
+                "search",
+                state,
+                t0,
+                result_type="direct_answer",
+                response_length=len(response_text),
+            )
             return {"ai_response": response_text, "token_usage": usage}
 
         search_results: list[str] = []
@@ -52,13 +58,19 @@ async def search_node(state: AgentState) -> dict:
                 images.extend(data.get("images", []))
 
         log_agent_success(
-            "search", state, t0,
+            "search",
+            state,
+            t0,
             result_type="tool_calls",
             tool_calls=len(response.tool_calls),
             results_count=len(search_results),
             images_count=len(images),
         )
-        return {"search_results": search_results, "images": images, "token_usage": usage}
+        return {
+            "search_results": search_results,
+            "images": images,
+            "token_usage": usage,
+        }
     except Exception as exc:
         log_agent_failure("search", state, exc)
         raise

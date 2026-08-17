@@ -1,6 +1,5 @@
 import json
 import secrets
-from typing import Optional
 
 from app.auth.schemas import UserOut
 from app.core.config import settings
@@ -46,7 +45,7 @@ async def login_with_firebase_token(token: str) -> tuple[User, str]:
     return user, session_id
 
 
-async def get_session_user(session_id: str) -> Optional[dict]:
+async def get_session_user(session_id: str) -> dict | None:
     raw = await redis_client.get(_session_key(session_id))
     if not raw:
         return None

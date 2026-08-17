@@ -1,7 +1,12 @@
 import json
+import logging
+
+from pymongo.errors import PyMongoError
 
 from app.core.redis_client import redis_client
 from app.models.message import Message
+
+logger = logging.getLogger("cortex.agents.memory")
 
 MEMORY_TTL_SECONDS = 60 * 60 * 24
 MAX_MEMORY_MESSAGES = 20
@@ -19,15 +24,19 @@ async def get_memory(conversation_id: str) -> list[dict]:
     # Fallback: load last N messages from MongoDB when Redis is cold
     try:
         from beanie import PydanticObjectId
+
         messages = (
-            await Message.find(Message.conversation_id == PydanticObjectId(conversation_id))
+            await Message.find(
+                Message.conversation_id == PydanticObjectId(conversation_id)
+            )
             .sort(-Message.created_at)
             .limit(MAX_MEMORY_MESSAGES)
             .to_list()
         )
         messages.reverse()
         return [{"role": m.role, "content": m.content} for m in messages]
-    except Exception:
+    except PyMongoError as e:
+        logger.debug("MongoDB fallback failed: %s", e)
         return []
 
 

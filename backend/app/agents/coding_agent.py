@@ -20,7 +20,13 @@ async def coding_node(state: AgentState) -> dict:
         )
         response = content_text(result.content).strip()
         usage = _extract_usage(result)
-        log_agent_success("coding", state, t0, response_length=len(response), tokens=usage.get("total_tokens", 0))
+        log_agent_success(
+            "coding",
+            state,
+            t0,
+            response_length=len(response),
+            tokens=usage.get("total_tokens", 0),
+        )
         return {"ai_response": response, "token_usage": usage}
     except Exception as exc:
         log_agent_failure("coding", state, exc)

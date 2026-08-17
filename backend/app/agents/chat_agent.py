@@ -49,7 +49,13 @@ async def chat_node(state: AgentState) -> dict:
         result = await get_model("chat").ainvoke(messages)
         response = content_text(result.content)
         usage = _extract_usage(result)
-        log_agent_success("chat", state, t0, response_length=len(response), tokens=usage.get("total_tokens", 0))
+        log_agent_success(
+            "chat",
+            state,
+            t0,
+            response_length=len(response),
+            tokens=usage.get("total_tokens", 0),
+        )
         return {"ai_response": response, "token_usage": usage}
     except Exception as exc:
         log_agent_failure("chat", state, exc)
