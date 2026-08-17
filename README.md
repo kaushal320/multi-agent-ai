@@ -71,7 +71,7 @@ touched yet.
 ## RAG (vector search)
 
 Uploads a PDF per conversation, splits it into 1000-char chunks (150 overlap),
-embeds with `GoogleGenerativeAIEmbeddings` (`models/embedding-001`), and stores it in
+embeds with `GoogleGenerativeAIEmbeddings` (`gemini-embedding-001`, 3,072 dimensions), and stores it in
 a Qdrant collection `conv_<conversation_id>`. The `rag` agent retrieves the top 4
 chunks for a question and answers strictly from that context.
 

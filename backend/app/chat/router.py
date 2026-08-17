@@ -5,7 +5,7 @@ from app.auth.dependencies import get_current_user
 from app.chat import service
 from app.chat.schemas import SaveMessageRequest, UpdateConversationRequest
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 
 def _dump(document) -> dict:

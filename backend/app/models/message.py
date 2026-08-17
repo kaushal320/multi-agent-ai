@@ -10,6 +10,8 @@ class Message(Document):
     role: Literal["user", "assistant"]
     content: str
     images: list[str] = []
+    token_usage: dict = Field(default_factory=dict)
+    agent: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

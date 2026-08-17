@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import get_current_user
 
-router = APIRouter(prefix="/api", tags=["user"])
+router = APIRouter(prefix="/api/v1", tags=["user"])
 
 
 @router.get("/me")

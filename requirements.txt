@@ -22,3 +22,8 @@ pypdf
 langchain-text-splitters
 langchain-community
 logfire[fastapi]
+slowapi
+python-json-logger
+ruff
+pytest
+pytest-asyncio

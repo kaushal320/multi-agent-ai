@@ -1,20 +1,18 @@
-import os
-
-from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
-load_dotenv()
+from app.core.config import settings
 
-qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://localhost:6333"))
+qdrant_client = QdrantClient(url=settings.qdrant_url)
 
 embeddings = GoogleGenerativeAIEmbeddings(
     model="gemini-embedding-001",
-    output_dimensionality=768,
 )
 
-COLLECTION_VECTOR_SIZE = 768  # gemini-embedding-001 (dims capped via output_dimensionality)
+# gemini-embedding-001 returns 3,072-dimensional embeddings.  This must match
+# the Qdrant collection schema exactly.
+COLLECTION_VECTOR_SIZE = 3072
 COLLECTION_DISTANCE = Distance.COSINE
 
 

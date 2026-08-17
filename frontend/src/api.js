@@ -14,34 +14,34 @@ api.interceptors.response.use(
   }
 );
 
-export const loginWithFirebaseToken = (token) => api.post("/api/auth/login", { token });
-export const logout = () => api.get("/api/auth/logout");
-export const getMe = () => api.get("/api/me");
+export const loginWithFirebaseToken = (token) => api.post("/api/v1/auth/login", { token });
+export const logout = () => api.post("/api/v1/auth/logout");
+export const getMe = () => api.get("/api/v1/me");
 
-export const createConversation = () => api.post("/api/chat/create_conversation");
-export const getConversations = () => api.get("/api/chat/get_conversations");
+export const createConversation = () => api.post("/api/v1/chat/create_conversation");
+export const getConversations = () => api.get("/api/v1/chat/get_conversations");
 export const updateConversation = (conversationId, title) =>
-  api.post("/api/chat/update_conversation", { conversation_id: conversationId, title });
-export const getMessages = (conversationId) => api.get(`/api/chat/get_messages/${conversationId}`);
+  api.post("/api/v1/chat/update_conversation", { conversation_id: conversationId, title });
+export const getMessages = (conversationId) => api.get(`/api/v1/chat/get_messages/${conversationId}`);
 export const saveMessage = (conversationId, role, content, images = []) =>
-  api.post("/api/chat/save_message", { conversation_id: conversationId, role, content, images });
+  api.post("/api/v1/chat/save_message", { conversation_id: conversationId, role, content, images });
 
 export const sendAgentMessage = (conversationId, prompt, agent = "auto") =>
-  api.post("/api/agent/chat", { prompt, conversation_id: conversationId, agent });
+  api.post("/api/v1/agent/chat", { prompt, conversation_id: conversationId, agent });
 
 export const uploadDocument = (file, conversationId) => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("conversation_id", conversationId);
-  return api.post("/api/documents/upload", formData, {
+  return api.post("/api/v1/documents/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
 };
 
 
-export async function streamAgentMessage(conversationId, prompt, agent = "auto", { onAgentSelect, onToken, onImages }) {
+export async function streamAgentMessage(conversationId, prompt, agent = "auto", { onAgentSelect, onPlan, onToken, onImages, onComplete }) {
   const baseURL = import.meta.env.VITE_SERVER_URL || "http://localhost:8000";
-  const response = await fetch(`${baseURL}/api/agent/chat/stream`, {
+  const response = await fetch(`${baseURL}/api/v1/agent/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -69,12 +69,18 @@ export async function streamAgentMessage(conversationId, prompt, agent = "auto",
       const trimmed = line.trim();
       if (!trimmed.startsWith("data: ")) continue;
       const dataStr = trimmed.slice(6).trim();
-      if (dataStr === "[DONE]") return;
+      if (dataStr === "[DONE]") {
+        onComplete?.();
+        return;
+      }
 
       try {
         const parsed = JSON.parse(dataStr);
         if (parsed.agent && onAgentSelect) {
           onAgentSelect(parsed.agent);
+        }
+        if (parsed.plan && onPlan) {
+          onPlan(parsed.plan);
         }
         if (parsed.token && onToken) {
           onToken(parsed.token);
@@ -88,4 +94,3 @@ export async function streamAgentMessage(conversationId, prompt, agent = "auto",
     }
   }
 }
-

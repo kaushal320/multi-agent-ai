@@ -4,7 +4,7 @@ from app.auth.schemas import LoginRequest, UserOut
 from app.auth.service import delete_session, login_with_firebase_token
 from app.core.config import settings
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=UserOut)
@@ -16,8 +16,9 @@ async def login(body: LoginRequest, response: Response):
         value=session_id,
         max_age=settings.session_ttl_seconds,
         httponly=True,
-        secure=settings.environment != "development",
-        samesite="none" if settings.environment != "development" else "lax",
+        secure=settings.environment == "production",
+        samesite="lax",
+        path="/",
     )
 
     return UserOut(
@@ -29,10 +30,10 @@ async def login(body: LoginRequest, response: Response):
     )
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout(request: Request, response: Response):
     session_id = request.cookies.get(settings.session_cookie_name)
     if session_id:
         await delete_session(session_id)
-    response.delete_cookie(settings.session_cookie_name)
+    response.delete_cookie(settings.session_cookie_name, path="/")
     return {"message": "Logged out successfully"}

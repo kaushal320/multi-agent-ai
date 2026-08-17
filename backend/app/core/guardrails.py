@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
     import logfire
@@ -24,6 +24,13 @@ HACKING_SECURITY_PATTERNS = [
     r"\bbypass\b\s+(auth|authentication|password|firewall|waf|security|login|restriction)",
     r"(sql\s+injection|reverse\s+shell|buffer\s+overflow|ddos)\s+(payload|script|code|attack)",
     r"generate\s+(malware|ransomware|trojan|keylogger|exploit|virus|rootkit)",
+]
+
+# Output patterns that should never appear in responses
+DANGEROUS_OUTPUT_PATTERNS = [
+    r"\b\d{3}-\d{2}-\d{4}\b",  # SSN
+    r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",  # Credit card
+    r"BEGIN\s+(RSA\s+)?PRIVATE\s+KEY",  # Private keys
 ]
 
 # Fast-path greetings mapping to save LLM tokens completely
@@ -71,7 +78,7 @@ def _perform_input_checks(prompt: str) -> Dict[str, Any]:
     for pattern in JAILBREAK_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE):
             if LOGFIRE_AVAILABLE:
-                logfire.warn("⛔ [Guardrails AI] VIOLATION DETECTED: Prompt injection attempt", pattern=pattern, prompt=prompt)
+                logfire.warn("Guardrails VIOLATION: Prompt injection attempt", pattern=pattern)
             raise GuardrailViolationError(
                 "Security policy violation: Prompt injection attempt detected.",
                 category="prompt_injection"
@@ -81,14 +88,14 @@ def _perform_input_checks(prompt: str) -> Dict[str, Any]:
     for pattern in HACKING_SECURITY_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE):
             if LOGFIRE_AVAILABLE:
-                logfire.warn("⛔ [Guardrails AI] VIOLATION DETECTED: Hacking / Exploit request", pattern=pattern, prompt=prompt)
+                logfire.warn("Guardrails VIOLATION: Hacking / Exploit request", pattern=pattern)
             raise GuardrailViolationError(
                 "Security policy violation: Requests for active hacking instructions or exploitation are restricted.",
                 category="cybersecurity"
             )
 
     if LOGFIRE_AVAILABLE:
-        logfire.info("✅ [Guardrails AI] Input Security Check PASSED", prompt_length=len(prompt))
+        logfire.info("Guardrails Input Security Check PASSED", prompt_length=len(prompt))
 
     return {"status": "passed", "prompt": prompt}
 
@@ -97,6 +104,18 @@ def validate_output_response(response: str) -> Dict[str, Any]:
     """Validates agent generated response content against Guardrails AI rules."""
     if LOGFIRE_AVAILABLE:
         with logfire.span("guardrails_output_inspection", response_length=len(response)):
-            logfire.info("✅ [Guardrails AI] Output Content Inspection PASSED", response_length=len(response))
+            _perform_output_checks(response)
+            logfire.info("Guardrails Output Content Inspection PASSED", response_length=len(response))
+    else:
+        _perform_output_checks(response)
     return {"status": "passed", "response": response}
 
+
+def _perform_output_checks(response: str) -> None:
+    """Check output for dangerous content patterns."""
+    for pattern in DANGEROUS_OUTPUT_PATTERNS:
+        if re.search(pattern, response, re.IGNORECASE):
+            raise GuardrailViolationError(
+                "Output policy violation: Response contains sensitive data pattern.",
+                category="output_safety"
+            )

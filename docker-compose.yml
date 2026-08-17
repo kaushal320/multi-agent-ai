@@ -1,8 +1,16 @@
 services:
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -20,13 +28,24 @@ services:
     env_file:
       - ./.env
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
       - QDRANT_URL=http://qdrant:6333
+      - FIREBASE_CREDENTIALS_PATH=/run/secrets/firebase_service_account
     depends_on:
-      - redis
-      - qdrant
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
     volumes:
       - ./static:/app/static
+    secrets:
+      - firebase_service_account
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   frontend:
     build:
@@ -39,7 +58,13 @@ services:
     volumes:
       - ./frontend/src:/app/src
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
 volumes:
   qdrant_storage:
+  redis_data:
+
+secrets:
+  firebase_service_account:
+    file: ./firebase-service-account.json

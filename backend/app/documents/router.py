@@ -15,7 +15,9 @@ from app.core.vectorstore import (
     qdrant_client,
 )
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
+router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/upload")
@@ -27,8 +29,15 @@ async def upload_document(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+        )
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(await file.read())
+        tmp.write(content)
         tmp_path = tmp.name
     try:
         loader = PyPDFLoader(tmp_path)

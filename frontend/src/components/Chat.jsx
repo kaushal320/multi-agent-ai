@@ -38,6 +38,7 @@ const AGENT_MODES = [
   { id: "ppt", label: "PPT", Icon: Monitor },
   { id: "image", label: "Image", Icon: ImageIcon },
   { id: "search", label: "Search", Icon: Globe },
+  { id: "research_rag", label: "Research + RAG", Icon: Globe },
 ];
 
 const AGENT_META = {
@@ -48,6 +49,7 @@ const AGENT_META = {
   image: { label: "Image Generator", icon: "🎨" },
   search: { label: "Search Agent", icon: "🔍" },
   rag: { label: "RAG Agent", icon: "📚" },
+  research_rag: { label: "Research + RAG", icon: "Research" },
 };
 
 const PROMPT_SUGGESTIONS = [
@@ -203,6 +205,8 @@ export default function Chat({ firebaseUser }) {
       content: "",
       images: [],
       agentUsed: agent === "auto" ? "Routing..." : agent,
+      orchestrationPlan: [],
+      planCompleted: false,
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
@@ -221,6 +225,13 @@ export default function Chat({ firebaseUser }) {
             )
           );
         },
+        onPlan: (plan) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, orchestrationPlan: plan } : m
+            )
+          );
+        },
         onToken: (token) => {
           setMessages((prev) =>
             prev.map((m) =>
@@ -234,6 +245,13 @@ export default function Chat({ firebaseUser }) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId ? { ...m, images: imgs } : m
+            )
+          );
+        },
+        onComplete: () => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, planCompleted: true } : m
             )
           );
         },
@@ -412,6 +430,22 @@ export default function Chat({ firebaseUser }) {
                             ? "⚡ Routing request..."
                             : `${agentInfo?.icon || "🤖"} ${agentInfo?.label || m.agentUsed}`}
                         </span>
+                      </div>
+                    )}
+                    {m.role === "assistant" && m.orchestrationPlan?.length > 0 && (
+                      <div className={`agent-timeline ${m.planCompleted ? "complete" : "running"}`}>
+                        <div className="agent-timeline-header">
+                          <span>Agent execution</span>
+                          <span>{m.planCompleted ? "Complete" : "Running"}</span>
+                        </div>
+                        <ol>
+                          {m.orchestrationPlan.map((step, index) => (
+                            <li key={`${step}-${index}`}>
+                              <span className="agent-timeline-dot" />
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
                       </div>
                     )}
                     <div className="bubble">

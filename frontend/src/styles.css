@@ -835,6 +835,67 @@ body {
   flex-shrink: 0;
 }
 
+.agent-timeline {
+  width: min(100%, 430px);
+  margin: 7px 0 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  border-radius: 12px;
+  background: rgba(30, 24, 50, 0.62);
+  color: #ddd6fe;
+  font-size: 12px;
+}
+
+.agent-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #c4b5fd;
+  font-weight: 700;
+}
+
+.agent-timeline-header span:last-child {
+  color: #fbbf24;
+  font-size: 11px;
+}
+
+.agent-timeline.complete .agent-timeline-header span:last-child {
+  color: #86efac;
+}
+
+.agent-timeline ol {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agent-timeline li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e9e5ff;
+}
+
+.agent-timeline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 7px rgba(167, 139, 250, 0.8);
+  flex: 0 0 auto;
+}
+
+.agent-timeline.running .agent-timeline-dot {
+  animation: pulse-glow 1.5s infinite ease-in-out;
+}
+
+.agent-timeline.complete .agent-timeline-dot {
+  background: #86efac;
+  box-shadow: 0 0 7px rgba(134, 239, 172, 0.7);
+}
+
 .logfire-topbar-btn {
   display: inline-flex;
   align-items: center;
@@ -1007,4 +1068,3 @@ body {
   color: #e2e8f0;
   background: #0a0910;
 }
-

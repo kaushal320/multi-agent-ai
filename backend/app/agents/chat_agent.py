@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.agents.models import content_text, get_model
+from app.agents.logging import log_agent_failure, log_agent_start, log_agent_success
+from app.agents.models import _extract_usage, content_text, get_model
 from app.agents.state import AgentState
 from app.core import memory
 
@@ -22,6 +23,13 @@ async def _build_messages(state: AgentState) -> list:
             f"user's question:\n{context}"
         )
 
+    if state.get("rag_context"):
+        system_prompt += (
+            "\n\nUse the following retrieved document context as evidence. "
+            "Do not claim facts that are not supported by this context:\n"
+            f"{state['rag_context']}"
+        )
+
     messages = [SystemMessage(content=system_prompt)]
     for entry in history:
         role = entry.get("role")
@@ -35,15 +43,31 @@ async def _build_messages(state: AgentState) -> list:
 
 
 async def chat_node(state: AgentState) -> dict:
-    messages = await _build_messages(state)
-    result = await get_model("chat").ainvoke(messages)
-    return {"ai_response": content_text(result.content)}
+    t0 = log_agent_start("chat", state)
+    try:
+        messages = await _build_messages(state)
+        result = await get_model("chat").ainvoke(messages)
+        response = content_text(result.content)
+        usage = _extract_usage(result)
+        log_agent_success("chat", state, t0, response_length=len(response), tokens=usage.get("total_tokens", 0))
+        return {"ai_response": response, "token_usage": usage}
+    except Exception as exc:
+        log_agent_failure("chat", state, exc)
+        raise
 
 
 async def chat_node_stream(state: AgentState):
     """Streams the chat model's response tokens as they arrive."""
-    messages = await _build_messages(state)
-    async for chunk in get_model("chat").astream(messages):
-        content = content_text(chunk.content)
-        if content:
-            yield content
+    t0 = log_agent_start("chat_stream", state)
+    try:
+        messages = await _build_messages(state)
+        token_count = 0
+        async for chunk in get_model("chat").astream(messages):
+            content = content_text(chunk.content)
+            if content:
+                token_count += 1
+                yield content
+        log_agent_success("chat_stream", state, t0, tokens_yielded=token_count)
+    except Exception as exc:
+        log_agent_failure("chat_stream", state, exc)
+        raise
