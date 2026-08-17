@@ -4,7 +4,9 @@ firebase-service-account.json
 *.json
 firebase-service-account.json
 *-firebase-adminsdk-*.json
-
+/claude
+.claude
+./claude
 # Environment files
 .env
 .env.*
