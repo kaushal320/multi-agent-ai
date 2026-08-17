@@ -1,3 +1,12 @@
 node_modules
 dist
 .env
+# Firebase / Google Cloud credentials
+*.json
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+
+# Environment files
+.env
+.env.*
+!.env.example

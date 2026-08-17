@@ -1,6 +1,14 @@
 .env
 firebase-service-account.json
+# Firebase / Google Cloud credentials
+*.json
+firebase-service-account.json
+*-firebase-adminsdk-*.json
 
+# Environment files
+.env
+.env.*
+!.env.example
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

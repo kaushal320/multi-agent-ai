@@ -1,0 +1,63 @@
+import os
+import tempfile
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from qdrant_client.models import PointStruct
+
+from app.auth.dependencies import get_current_user
+from app.core.vectorstore import (
+    embeddings,
+    ensure_collection,
+    get_collection_name,
+    qdrant_client,
+)
+
+router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+@router.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    conversation_id: str = Form(...),
+    user: dict = Depends(get_current_user),
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    try:
+        loader = PyPDFLoader(tmp_path)
+        pages = loader.load()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+        chunks = splitter.split_documents(pages)
+    finally:
+        os.unlink(tmp_path)
+
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No extractable text found in the PDF")
+
+    collection = get_collection_name(conversation_id)
+    ensure_collection(collection)
+
+    vectors = embeddings.embed_documents([chunk.page_content for chunk in chunks])
+    points = [
+        PointStruct(
+            id=uuid4().hex,
+            vector=vector,
+            payload={
+                "conversation_id": conversation_id,
+                "source_filename": file.filename,
+                "chunk_index": i,
+                "page_content": chunks[i].page_content,
+            },
+        )
+        for i, vector in enumerate(vectors)
+    ]
+    qdrant_client.upsert(collection_name=collection, points=points)
+
+    return {"message": "Document indexed", "chunks": len(chunks)}
