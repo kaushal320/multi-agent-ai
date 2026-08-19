@@ -15,6 +15,8 @@ logger = logging.getLogger("cortex.agents.models")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 MAX_PROMPT_TOKENS = int(os.getenv("MAX_PROMPT_TOKENS", "4000"))
 LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+# Separate timeout for streaming operations (longer to accommodate slow token generation)
+LLM_STREAMING_TIMEOUT_SECONDS = int(os.getenv("LLM_STREAMING_TIMEOUT_SECONDS", "300"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 LLM_CACHE_ENABLED = os.getenv("LLM_CACHE_ENABLED", "true").lower() == "true"
 
@@ -132,7 +134,7 @@ def _extract_usage(response) -> dict:
     return usage
 
 
-def _get_model_raw(agent_name: str):
+def _get_model_raw(agent_name: str, streaming: bool = False):
     """Return the underlying LLM instance (no retry wrapper)."""
     if agent_name in ("chat", "search", "router"):
         return ChatGroq(
@@ -142,16 +144,18 @@ def _get_model_raw(agent_name: str):
             max_retries=0,
         )
     if agent_name == "coding":
+        # Use longer timeout for streaming to prevent deadline exceeded errors
+        timeout = LLM_STREAMING_TIMEOUT_SECONDS if streaming else LLM_TIMEOUT_SECONDS
         return ChatGoogleGenerativeAI(
             model="gemini-3.6-flash",
             api_key=settings.google_api_key,
-            timeout=LLM_TIMEOUT_SECONDS,
+            timeout=timeout,
             max_retries=0,
         )
     return _get_model_raw("chat")
 
 
-def get_model(agent_name: str):
+def get_model(agent_name: str, streaming: bool = False):
     """Return a model with retry logic and optional caching wrapping the raw LLM."""
 
     class RetryWrapper:
@@ -215,7 +219,12 @@ def get_model(agent_name: str):
             wrapper = RetryWrapper(bound, self._name)
             return wrapper
 
-    return RetryWrapper(_get_model_raw(agent_name), agent_name)
+        def with_structured_output(self, schema, **kwargs):
+            structured = self._raw.with_structured_output(schema, **kwargs)
+            wrapper = RetryWrapper(structured, self._name)
+            return wrapper
+
+    return RetryWrapper(_get_model_raw(agent_name, streaming=streaming), agent_name)
 
 
 def content_text(content) -> str:

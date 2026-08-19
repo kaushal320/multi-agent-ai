@@ -1,6 +1,6 @@
 import logging
 
-from app.agents.models import AgentHandoff, RouterDecision, get_model
+from app.agents.models import AgentHandoff, content_text, get_model
 from app.agents.state import AgentState
 from app.core.observability import obs
 from app.core.pii import redact_pii
@@ -17,6 +17,26 @@ ROUTER_AGENTS = [
     "rag",
     "research_rag",
 ]
+
+
+def _parse_agent(text: str) -> str:
+    """Extract a known agent name from the model's (possibly noisy) reply.
+
+    The model may wrap the word in quotes/punctuation or, on thinking models
+    like Qwen3, embed it inside a <think> block. We fall back to 'chat' if no
+    known agent token is found.
+    """
+    cleaned = content_text(text).strip().lower()
+    tokens = cleaned.split()
+    # Prefer an exact single-token match (handles "chat.", '"search"', etc.)
+    for candidate in ROUTER_AGENTS:
+        if candidate in tokens:
+            return candidate
+    # Otherwise, look for any known agent token anywhere in the text.
+    for candidate in ROUTER_AGENTS:
+        if candidate in cleaned:
+            return candidate
+    return "chat"
 
 ROUTER_SYSTEM_PROMPT = """You are a router for an AI assistant. Based on the user's message, choose exactly ONE of the following agents and reply with a single word only:
 
@@ -40,21 +60,34 @@ async def router_node(state: AgentState) -> dict:
             "orchestration_plan": ["manual agent selection", state["agent"]],
         }
 
-    model = get_model("router").with_structured_output(RouterDecision)
-    decision = await model.ainvoke(
+    # Use plain text generation instead of structured output.
+    # This avoids the Qwen3 thinking-mode vs. tool-call conflict on Groq.
+    model = get_model("router")
+    resp = await model.ainvoke(
         [
             ("system", ROUTER_SYSTEM_PROMPT),
             ("human", state["prompt"]),
         ]
     )
 
-    # Validate
-    agent = decision.agent if decision.agent in ROUTER_AGENTS else "chat"
+    # Parse the agent name from the model's free-text reply.
+    agent = _parse_agent(content_text(resp.content))
+
+    # Simple confidence: 1.0 if exact match, 0.6 if found inside text, 0.3 otherwise.
+    cleaned = content_text(resp.content).strip().lower()
+    if agent in cleaned.split():
+        confidence = 1.0
+    elif agent in cleaned:
+        confidence = 0.6
+    else:
+        confidence = 0.3
+
+    reasoning = f"Router selected '{agent}' (confidence={confidence:.1f}) from model output: {resp.content[:200]!r}"
 
     obs.router_decision(
         agent=agent,
-        confidence=decision.confidence,
-        reasoning=decision.reasoning,
+        confidence=confidence,
+        reasoning=reasoning,
         conversation_id=state.get("conversation_id", "unknown"),
         prompt=state["prompt"],
     )
@@ -92,13 +125,13 @@ async def router_node(state: AgentState) -> dict:
             "plan": plans[agent],
             "conversation_id": state.get("conversation_id", "unknown"),
         },
-        reason=decision.reasoning,
+        reason=reasoning,
     )
 
     return {
         "agent": agent,
         "orchestration_plan": plans[agent],
-        "reflection": decision.reasoning,
-        "needs_more_info": decision.confidence < 0.5,
+        "reflection": reasoning,
+        "needs_more_info": confidence < 0.5,
         "handoff": handoff.model_dump(),
     }

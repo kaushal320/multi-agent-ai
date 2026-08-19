@@ -42,7 +42,7 @@ async def coding_node_stream(state: AgentState):
             ("human", state["prompt"]),
         ]
         token_count = 0
-        async for chunk in get_model("coding").astream(messages):
+        async for chunk in get_model("coding", streaming=True).astream(messages):
             content = content_text(chunk.content)
             if content:
                 token_count += 1

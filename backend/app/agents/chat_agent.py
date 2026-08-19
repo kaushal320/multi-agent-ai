@@ -68,7 +68,7 @@ async def chat_node_stream(state: AgentState):
     try:
         messages = await _build_messages(state)
         token_count = 0
-        async for chunk in get_model("chat").astream(messages):
+        async for chunk in get_model("chat", streaming=True).astream(messages):
             content = content_text(chunk.content)
             if content:
                 token_count += 1
