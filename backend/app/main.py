@@ -5,20 +5,21 @@ from contextlib import asynccontextmanager
 
 import redis
 from fastapi import FastAPI, Request
-
-logger = logging.getLogger("cortex.main")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+
+
 
 from app.agents.router import router as agent_router
 from app.auth.router import router as auth_router
 from app.chat.router import router as chat_router
 from app.core import firebase  # noqa: F401  (import initializes the Firebase app)
 from app.core.config import settings
+from app.core.observability import obs
 from app.db.mongodb import init_db
 from app.documents.router import router as documents_router
 from app.routers.me import router as me_router
@@ -32,22 +33,17 @@ logging.basicConfig(
 )
 logging.getLogger("cortex.agents").setLevel(logging.INFO)
 
-
-try:
-    import logfire
-
-    logfire.configure(
-        service_name="cortex-ai-backend",
-        token=settings.logfire_token if settings.logfire_token else None,
-        advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url),
-        send_to_logfire="if-token-present",
-    )
-    LOGFIRE_AVAILABLE = True
-except ImportError:
-    LOGFIRE_AVAILABLE = False
+obs.info("Application startup", environment=settings.environment)
 
 
 limiter = Limiter(key_func=get_remote_address)
+
+
+def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded"},
+    )
 
 
 @asynccontextmanager
@@ -65,13 +61,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-if LOGFIRE_AVAILABLE:
-    try:
-        logfire.instrument_fastapi(app)
-        logfire.instrument_httpx()
-        logfire.instrument_pydantic()
-    except Exception as e:  # noqa: BLE001
-        logger.debug("Logfire instrumentation error: %s", e)
+# Logfire auto-instrumentation is now handled by obs.configure()
 
 
 @app.middleware("http")
