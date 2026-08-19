@@ -7,7 +7,8 @@ class Settings(BaseSettings):
 
     redis_url: str
 
-    firebase_credentials_path: str
+    firebase_credentials_path: str = "/run/secrets/firebase_service_account"
+    firebase_service_account_json: str = ""
 
     frontend_url: str
 
