@@ -1,8 +1,8 @@
 import logging
-import re
 
-from app.agents.models import content_text, get_model
+from app.agents.models import AgentHandoff, RouterDecision, get_model
 from app.agents.state import AgentState
+from app.core.observability import obs
 from app.core.pii import redact_pii
 
 logger = logging.getLogger("cortex.agents.router_agent")
@@ -32,49 +32,31 @@ ROUTER_SYSTEM_PROMPT = """You are a router for an AI assistant. Based on the use
 Return only the agent name. Do not add any other text."""
 
 
-try:
-    import logfire
-
-    LOGFIRE_AVAILABLE = True
-except ImportError:
-    LOGFIRE_AVAILABLE = False
-
-
 async def router_node(state: AgentState) -> dict:
     if state.get("agent") and state["agent"] != "auto":
-        logger.info("Manual agent selection: %s", state["agent"])
-        if LOGFIRE_AVAILABLE:
-            logfire.info("Manual agent selection: {agent}", agent=state["agent"])
+        obs.info("Manual agent selection", agent=state["agent"])
         return {
             "agent": state["agent"],
             "orchestration_plan": ["manual agent selection", state["agent"]],
         }
 
-    if LOGFIRE_AVAILABLE:
-        with logfire.span("router_node_classification"):
-            result = await get_model("router").ainvoke(
-                [
-                    ("system", ROUTER_SYSTEM_PROMPT),
-                    ("human", state["prompt"]),
-                ]
-            )
-            agent = re.sub(r"[^a-z]", "", content_text(result.content).strip().lower())
-            if not agent or agent not in ROUTER_AGENTS:
-                agent = "chat"
-            logfire.info("Router classified prompt to agent: {agent}", agent=agent)
-    else:
-        result = await get_model("router").ainvoke(
-            [
-                ("system", ROUTER_SYSTEM_PROMPT),
-                ("human", state["prompt"]),
-            ]
-        )
-        agent = re.sub(r"[^a-z]", "", content_text(result.content).strip().lower())
-        if not agent or agent not in ROUTER_AGENTS:
-            agent = "chat"
+    model = get_model("router").with_structured_output(RouterDecision)
+    decision = await model.ainvoke(
+        [
+            ("system", ROUTER_SYSTEM_PROMPT),
+            ("human", state["prompt"]),
+        ]
+    )
 
-    logger.info(
-        "Router classified to: %s | prompt=%.80s", agent, redact_pii(state["prompt"])
+    # Validate
+    agent = decision.agent if decision.agent in ROUTER_AGENTS else "chat"
+
+    obs.router_decision(
+        agent=agent,
+        confidence=decision.confidence,
+        reasoning=decision.reasoning,
+        conversation_id=state.get("conversation_id", "unknown"),
+        prompt=state["prompt"],
     )
 
     plans = {
@@ -100,4 +82,23 @@ async def router_node(state: AgentState) -> dict:
             "answer synthesis specialist",
         ],
     }
-    return {"agent": agent, "orchestration_plan": plans[agent]}
+
+    # Create structured handoff
+    handoff = AgentHandoff(
+        from_agent="router",
+        to_agent=agent,
+        payload={
+            "original_prompt": state["prompt"],
+            "plan": plans[agent],
+            "conversation_id": state.get("conversation_id", "unknown"),
+        },
+        reason=decision.reasoning,
+    )
+
+    return {
+        "agent": agent,
+        "orchestration_plan": plans[agent],
+        "reflection": decision.reasoning,
+        "needs_more_info": decision.confidence < 0.5,
+        "handoff": handoff.model_dump(),
+    }

@@ -1,8 +1,8 @@
 import json
 import logging
 import uuid
-
-from fastapi import Annotated, APIRouter, Depends, Request
+from typing import Annotated
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -23,16 +23,10 @@ from app.agents.search_agent import search_node
 from app.auth.dependencies import get_current_user
 from app.chat import service as chat_service
 from app.core import guardrails, memory
+from app.core.observability import obs
 from app.core.pii import redact_pii
 
 logger = logging.getLogger("cortex.agents.router")
-
-try:
-    import logfire
-
-    LOGFIRE_AVAILABLE = True
-except ImportError:
-    LOGFIRE_AVAILABLE = False
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 
@@ -64,6 +58,15 @@ def _initial_state(body: ChatRequest) -> dict:
         "rag_sources": [],
         "orchestration_plan": [],
         "token_usage": {},
+        # Iteration / reflection fields
+        "iteration": 0,
+        "max_iterations": 3,
+        "reflection": "",
+        "needs_more_info": False,
+        # Structured handoff
+        "handoff": None,
+        # Dynamic fan-out
+        "fanout_agents": [],
     }
 
 
@@ -136,6 +139,9 @@ async def chat(
         "images": result.get("images", []),
         "orchestration_plan": result.get("orchestration_plan", []),
         "token_usage": usage,
+        "handoff": result.get("handoff"),
+        "reflection": result.get("reflection"),
+        "iterations": result.get("iteration", 0),
     }
 
 
@@ -181,8 +187,7 @@ async def chat_stream(
             try:
                 guardrails.validate_input_prompt(body.prompt)
             except guardrails.GuardrailViolationError as err:
-                if LOGFIRE_AVAILABLE:
-                    logfire.warn("Guardrails Policy Violation: {err}", err=str(err))
+                obs.warning("Guardrails Policy Violation", error=str(err))
                 yield f"data: {json.dumps({'token': f'Guardrails Policy Violation: {err!s}'})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -190,8 +195,7 @@ async def chat_stream(
             # Fast-Path Greeting check (Zero LLM Token Cost)
             fast_greeting = guardrails.check_fast_path_greeting(body.prompt)
             if fast_greeting:
-                if LOGFIRE_AVAILABLE:
-                    logfire.info("FastPath Router Greeting Matched Zero Tokens Used")
+                obs.info("FastPath Router Greeting Matched - Zero Tokens Used")
                 yield f"data: {json.dumps({'agent': 'chat'})}\n\n"
                 yield f"data: {json.dumps({'token': fast_greeting})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -199,10 +203,7 @@ async def chat_stream(
                 return
 
             # 2. Router Agent Execution
-            if LOGFIRE_AVAILABLE:
-                with logfire.span("router_agent_execution", mode=body.agent):
-                    state.update(await router_node(state))
-            else:
+            with obs.span("router_agent_execution", mode=body.agent):
                 state.update(await router_node(state))
 
             resolved_agent = state["agent"]
@@ -210,20 +211,19 @@ async def chat_stream(
             # Emit resolved agent to frontend
             yield f"data: {json.dumps({'agent': resolved_agent})}\n\n"
             yield f"data: {json.dumps({'plan': state.get('orchestration_plan', [])})}\n\n"
+            # Emit handoff info if available
+            if state.get("handoff"):
+                yield f"data: {json.dumps({'handoff': state['handoff']})}\n\n"
 
             # 3. Agent Execution Node with Logfire Tracing
-            if LOGFIRE_AVAILABLE:
-                logfire.info(
-                    "Router Agent Orchestrated Request -> [{agent}]",
-                    agent=resolved_agent,
-                    conversation_id=body.conversation_id,
-                )
+            obs.info(
+                "Router Agent Orchestrated Request",
+                agent=resolved_agent,
+                conversation_id=body.conversation_id,
+            )
 
             if resolved_agent == "search":
-                if LOGFIRE_AVAILABLE:
-                    with logfire.span("search_agent_execution"):
-                        state.update(await search_node(state))
-                else:
+                with obs.span("search_agent_execution"):
                     state.update(await search_node(state))
 
             if resolved_agent in ("rag", "research_rag"):
@@ -232,34 +232,19 @@ async def chat_stream(
                     state.update(await search_node(state))
 
             if resolved_agent == "coding" and not state.get("ai_response"):
-                if LOGFIRE_AVAILABLE:
-                    with logfire.span("coding_agent_stream"):
-                        async for token in _visible_tokens(coding_node_stream(state)):
-                            full_response += token
-                            yield f"data: {json.dumps({'token': token})}\n\n"
-                else:
+                with obs.span("coding_agent_stream"):
                     async for token in _visible_tokens(coding_node_stream(state)):
                         full_response += token
                         yield f"data: {json.dumps({'token': token})}\n\n"
             elif resolved_agent in ("rag", "research_rag") and not state.get(
                 "ai_response"
             ):
-                if LOGFIRE_AVAILABLE:
-                    with logfire.span("answer_synthesis_stream", agent=resolved_agent):
-                        async for token in _visible_tokens(chat_node_stream(state)):
-                            full_response += token
-                            yield f"data: {json.dumps({'token': token})}\n\n"
-                else:
+                with obs.span("answer_synthesis_stream", agent=resolved_agent):
                     async for token in _visible_tokens(chat_node_stream(state)):
                         full_response += token
                         yield f"data: {json.dumps({'token': token})}\n\n"
             elif resolved_agent in ("chat", "search") and not state.get("ai_response"):
-                if LOGFIRE_AVAILABLE:
-                    with logfire.span("chat_agent_stream", agent=resolved_agent):
-                        async for token in _visible_tokens(chat_node_stream(state)):
-                            full_response += token
-                            yield f"data: {json.dumps({'token': token})}\n\n"
-                else:
+                with obs.span("chat_agent_stream", agent=resolved_agent):
                     async for token in _visible_tokens(chat_node_stream(state)):
                         full_response += token
                         yield f"data: {json.dumps({'token': token})}\n\n"
@@ -270,10 +255,7 @@ async def chat_stream(
                 else:
                     node = NON_STREAMED_NODES.get(resolved_agent)
                     if node:
-                        if LOGFIRE_AVAILABLE:
-                            with logfire.span(f"{resolved_agent}_agent_execution"):
-                                result = await node(state)
-                        else:
+                        with obs.span(f"{resolved_agent}_agent_execution"):
                             result = await node(state)
 
                         if result is not None:
@@ -309,13 +291,12 @@ async def chat_stream(
                 resolved_agent,
                 len(full_response),
             )
-            if LOGFIRE_AVAILABLE:
-                logfire.info(
-                    "Finished stream for {agent}",
-                    agent=resolved_agent,
-                    conversation_id=body.conversation_id,
-                    length=len(full_response),
-                )
+            obs.info(
+                "Stream finished",
+                agent=resolved_agent,
+                conversation_id=body.conversation_id,
+                length=len(full_response),
+            )
             if full_response:
                 await chat_service.save_message(
                     user["id"],

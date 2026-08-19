@@ -231,3 +231,29 @@ def content_text(content) -> str:
         elif hasattr(item, "text"):
             parts.append(item.text or "")
     return re.sub(r"<think>.*?</think>\\s*", "", "".join(parts), flags=re.DOTALL)
+
+
+# Structured routing and agent handoff models
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class AgentHandoff(BaseModel):
+    """Structured handoff between agents."""
+
+    from_agent: str
+    to_agent: str
+    payload: dict
+    reason: str
+
+
+class RouterDecision(BaseModel):
+    """Structured output from the router agent."""
+
+    agent: Literal[
+        "chat", "search", "coding", "pdf", "ppt", "image", "rag", "research_rag"
+    ]
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+    handoff: AgentHandoff | None = None

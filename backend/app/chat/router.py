@@ -1,6 +1,7 @@
 from beanie import PydanticObjectId
-from fastapi import Annotated, APIRouter, Depends, HTTPException
+from fastapi import  APIRouter, Depends, HTTPException
 
+from typing import Annotated
 from app.auth.dependencies import get_current_user
 from app.chat import service
 from app.chat.schemas import SaveMessageRequest, UpdateConversationRequest

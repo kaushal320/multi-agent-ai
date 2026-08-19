@@ -1,20 +1,17 @@
-import logging
 import time
 from typing import Any
 
+from app.core.observability import obs
 from app.core.pii import redact_pii
-
-logger = logging.getLogger("cortex.agents")
 
 
 def log_agent_start(agent_name: str, state: dict[str, Any]) -> float:
-    logger.info(
-        "[%s] Agent started | conversation=%s | prompt=%.80s",
-        agent_name,
-        state.get("conversation_id", "unknown"),
-        redact_pii(state.get("prompt", "")),
+    """Log agent start, return timestamp for duration calculation."""
+    return obs.agent_start(
+        agent_name=agent_name,
+        conversation_id=state.get("conversation_id", "unknown"),
+        prompt=state.get("prompt", ""),
     )
-    return time.perf_counter()
 
 
 def log_agent_success(
@@ -23,14 +20,12 @@ def log_agent_success(
     t0: float,
     **extra: Any,
 ) -> None:
-    duration_ms = round((time.perf_counter() - t0) * 1000, 1)
-    detail = " | ".join(f"{k}={v}" for k, v in extra.items()) if extra else ""
-    logger.info(
-        "[%s] Agent completed | conversation=%s | duration_ms=%.1f%s",
-        agent_name,
-        state.get("conversation_id", "unknown"),
-        duration_ms,
-        f" | {detail}" if detail else "",
+    """Log agent completion with duration."""
+    obs.agent_complete(
+        agent_name=agent_name,
+        conversation_id=state.get("conversation_id", "unknown"),
+        start_time=t0,
+        **extra,
     )
 
 
@@ -39,9 +34,9 @@ def log_agent_failure(
     state: dict[str, Any],
     exc: Exception,
 ) -> None:
-    logger.exception(
-        "[%s] Agent FAILED | conversation=%s | error=%s",
-        agent_name,
-        state.get("conversation_id", "unknown"),
-        type(exc).__name__,
+    """Log agent failure with error details."""
+    obs.agent_failure(
+        agent_name=agent_name,
+        conversation_id=state.get("conversation_id", "unknown"),
+        error=exc,
     )

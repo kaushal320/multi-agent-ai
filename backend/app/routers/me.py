@@ -1,5 +1,5 @@
-from fastapi import Annotated, APIRouter, Depends
-
+from fastapi import APIRouter, Depends
+from typing import Annotated
 from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1", tags=["user"])

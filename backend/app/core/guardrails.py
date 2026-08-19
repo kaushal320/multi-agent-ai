@@ -1,13 +1,7 @@
 import re
 from typing import Any
 
-try:
-    import logfire
-
-    LOGFIRE_AVAILABLE = True
-except ImportError:
-    LOGFIRE_AVAILABLE = False
-
+from app.core.observability import obs
 
 # Known dangerous or jailbreak pattern triggers
 JAILBREAK_PATTERNS = [
@@ -60,15 +54,9 @@ def check_fast_path_greeting(prompt: str) -> str | None:
 
 
 def validate_input_prompt(prompt: str) -> dict[str, Any]:
-    """Validates input prompt against Guardrails AI rules and records Logfire spans."""
+    """Validates input prompt against Guardrails AI rules."""
     prompt_clean = prompt.strip()
-
-    if LOGFIRE_AVAILABLE:
-        with logfire.span(
-            "guardrails_input_inspection", prompt_length=len(prompt_clean)
-        ):
-            return _perform_input_checks(prompt_clean)
-    else:
+    with obs.span("guardrails_input_inspection", prompt_length=len(prompt_clean)):
         return _perform_input_checks(prompt_clean)
 
 
@@ -80,10 +68,13 @@ def _perform_input_checks(prompt: str) -> dict[str, Any]:
     # Check for prompt injection / jailbreak patterns
     for pattern in JAILBREAK_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE):
-            if LOGFIRE_AVAILABLE:
-                logfire.warn(
-                    "Guardrails VIOLATION: Prompt injection attempt", pattern=pattern
-                )
+            obs.guardrails_check(
+                check_type="input",
+                passed=False,
+                conversation_id="unknown",
+                prompt=prompt,
+                violation_category="prompt_injection",
+            )
             raise GuardrailViolationError(
                 "Security policy violation: Prompt injection attempt detected.",
                 category="prompt_injection",
@@ -92,36 +83,38 @@ def _perform_input_checks(prompt: str) -> dict[str, Any]:
     # Check for malicious hacking / exploit patterns
     for pattern in HACKING_SECURITY_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE):
-            if LOGFIRE_AVAILABLE:
-                logfire.warn(
-                    "Guardrails VIOLATION: Hacking / Exploit request", pattern=pattern
-                )
+            obs.guardrails_check(
+                check_type="input",
+                passed=False,
+                conversation_id="unknown",
+                prompt=prompt,
+                violation_category="cybersecurity",
+            )
             raise GuardrailViolationError(
                 "Security policy violation: Requests for active hacking instructions or exploitation are restricted.",
                 category="cybersecurity",
             )
 
-    if LOGFIRE_AVAILABLE:
-        logfire.info(
-            "Guardrails Input Security Check PASSED", prompt_length=len(prompt)
-        )
+    obs.guardrails_check(
+        check_type="input",
+        passed=True,
+        conversation_id="unknown",
+        prompt=prompt,
+    )
 
     return {"status": "passed", "prompt": prompt}
 
 
 def validate_output_response(response: str) -> dict[str, Any]:
     """Validates agent generated response content against Guardrails AI rules."""
-    if LOGFIRE_AVAILABLE:
-        with logfire.span(
-            "guardrails_output_inspection", response_length=len(response)
-        ):
-            _perform_output_checks(response)
-            logfire.info(
-                "Guardrails Output Content Inspection PASSED",
-                response_length=len(response),
-            )
-    else:
+    with obs.span("guardrails_output_inspection", response_length=len(response)):
         _perform_output_checks(response)
+        obs.guardrails_check(
+            check_type="output",
+            passed=True,
+            conversation_id="unknown",
+            prompt=response,
+        )
     return {"status": "passed", "response": response}
 
 
