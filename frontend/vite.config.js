@@ -7,4 +7,12 @@ export default defineConfig({
     host: true,
     port: 5173,
   },
+  preview: {
+    host: true,
+    port: 5173,
+    allowedHosts: [
+      "multi-agent-ai-9.onrender.com",
+      "localhost",
+    ],
+  },
 });
