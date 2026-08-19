@@ -16,6 +16,7 @@ langchain-tavily
 reportlab
 python-pptx
 httpx
+rank-bm25
 qdrant-client
 langchain-qdrant
 pypdf
